@@ -403,9 +403,6 @@ main() {
     # Deploy infrastructure
     deploy_infrastructure
     
-    # Validate Terraform configuration
-    validate_terraform_config
-    
     # Configure kubectl
     configure_kubectl
     
