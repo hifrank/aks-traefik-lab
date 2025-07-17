@@ -114,7 +114,7 @@ configure-zones: ## Configure availability zones for the specified location
 	esac; \
 	if [ -f terraform/terraform.tfvars ]; then \
 		if grep -q "availability_zones" terraform/terraform.tfvars; then \
-			sed -i '' "s/availability_zones = .*/availability_zones = $$zones/" terraform/terraform.tfvars; \
+			sed -i '' "s|availability_zones = .*|availability_zones = $$zones|" terraform/terraform.tfvars; \
 		else \
 			echo "availability_zones = $$zones" >> terraform/terraform.tfvars; \
 		fi; \
@@ -221,7 +221,7 @@ update-k8s-version: ## Update Kubernetes version to latest supported
 		echo "Latest supported version: $$latest_version"; \
 		if [ -f terraform/terraform.tfvars ]; then \
 			if grep -q "kubernetes_version" terraform/terraform.tfvars; then \
-				sed -i '' "s/kubernetes_version = .*/kubernetes_version = \"$$latest_version\"/" terraform/terraform.tfvars; \
+				sed -i '' "s|kubernetes_version = .*|kubernetes_version = \"$$latest_version\"|" terraform/terraform.tfvars; \
 			else \
 				echo "kubernetes_version = \"$$latest_version\"" >> terraform/terraform.tfvars; \
 			fi; \

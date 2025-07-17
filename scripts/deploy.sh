@@ -440,8 +440,8 @@ update_availability_zones() {
     if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
         # Check if availability_zones is already in the file
         if grep -q "availability_zones" "${TERRAFORM_DIR}/terraform.tfvars"; then
-            # Replace existing line
-            sed -i '' "s/availability_zones = .*/availability_zones = ${zones}/" "${TERRAFORM_DIR}/terraform.tfvars"
+            # Replace existing line using a more robust approach
+            sed -i '' "s|availability_zones = .*|availability_zones = ${zones}|" "${TERRAFORM_DIR}/terraform.tfvars"
         else
             # Add new line
             echo "availability_zones = ${zones}" >> "${TERRAFORM_DIR}/terraform.tfvars"
@@ -458,9 +458,9 @@ get_latest_kubernetes_version() {
     
     # Get the latest supported version from Azure
     local latest_version
-    latest_version=$(az aks get-versions --location "${location}" --query "orchestrators[?isPreview==false].orchestratorVersion" -o tsv | sort -V | tail -n 1)
+    latest_version=$(az aks get-versions --location "${location}" --query "orchestrators[?isPreview==false].orchestratorVersion" -o tsv 2>/dev/null | sort -V | tail -n 1)
     
-    if [[ -n "$latest_version" ]]; then
+    if [[ -n "$latest_version" && "$latest_version" != "null" ]]; then
         log "Latest supported Kubernetes version: ${latest_version}"
         echo "$latest_version"
     else
@@ -494,8 +494,8 @@ update_kubernetes_version() {
     # Update terraform.tfvars with the latest version
     if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
         if grep -q "kubernetes_version" "${TERRAFORM_DIR}/terraform.tfvars"; then
-            # Replace existing line
-            sed -i '' "s/kubernetes_version = .*/kubernetes_version = \"${latest_version}\"/" "${TERRAFORM_DIR}/terraform.tfvars"
+            # Replace existing line using a more robust approach
+            sed -i '' "s|kubernetes_version = .*|kubernetes_version = \"${latest_version}\"|" "${TERRAFORM_DIR}/terraform.tfvars"
         else
             # Add new line
             echo "kubernetes_version = \"${latest_version}\"" >> "${TERRAFORM_DIR}/terraform.tfvars"
