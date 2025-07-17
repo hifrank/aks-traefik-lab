@@ -3,7 +3,7 @@
 
 # Basic configuration
 resource_group_name = "rg-aks-traefik-lab"
-location           = "East US"
+location           = "SoutheastAsia"
 cluster_name       = "aks-traefik-lab"
 kubernetes_version = "1.28.5"
 

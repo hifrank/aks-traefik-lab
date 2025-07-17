@@ -248,6 +248,58 @@ Traefik metrics are available at:
 - **Metrics endpoint**: `http://traefik-service:8080/metrics`
 - **Prometheus scraping**: Enabled with annotations
 
+## 🔧 Troubleshooting
+
+### Resource Provider 409 Conflicts
+
+The error you encountered is a common Azure issue where multiple operations try to register the same resource providers simultaneously. Here are the solutions:
+
+#### Option 1: Use the improved deployment script (recommended)
+The deployment script now includes retry logic and better error handling:
+
+```bash
+# The script will automatically retry on conflicts
+make deploy
+```
+
+#### Option 2: Skip resource provider registration
+If you continue to see conflicts, you can skip the resource provider registration:
+
+```bash
+# Skip resource provider registration
+make deploy-skip-providers
+# or
+./scripts/deploy.sh --skip-providers
+```
+
+#### Option 3: Run troubleshooting diagnostics
+Use the troubleshooting script to diagnose issues:
+
+```bash
+make troubleshoot
+# or
+./scripts/troubleshoot.sh
+```
+
+### Common Solutions
+
+1. **Wait and retry**: Resource provider conflicts are often temporary
+2. **Check quotas**: Ensure you have sufficient Azure quotas
+3. **Verify permissions**: Confirm you have Contributor role
+4. **Try different region**: Some regions may have capacity issues
+
+### Manual Resource Provider Registration
+
+If needed, you can manually register the required providers:
+
+```bash
+az provider register --namespace Microsoft.ContainerService
+az provider register --namespace Microsoft.Compute
+az provider register --namespace Microsoft.Network
+az provider register --namespace Microsoft.Storage
+az provider register --namespace Microsoft.ManagedIdentity
+```
+
 ## 🔐 Security Features
 
 - **Managed Identity**: AKS uses managed identity for Azure resource access

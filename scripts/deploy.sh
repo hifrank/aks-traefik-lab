@@ -14,15 +14,17 @@ NC='\033[0m' # No Color
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TERRAFORM_DIR="${SCRIPT_DIR}/terraform"
-K8S_DIR="${SCRIPT_DIR}/k8s"
-HELM_DIR="${SCRIPT_DIR}/helm"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+TERRAFORM_DIR="${PROJECT_DIR}/terraform"
+K8S_DIR="${PROJECT_DIR}/k8s"
+HELM_DIR="${PROJECT_DIR}/helm"
 
 # Default values
 RESOURCE_GROUP="rg-aks-traefik-lab"
 CLUSTER_NAME="aks-traefik-lab"
 LOCATION="eastus"
 DOMAIN_SUFFIX="example.com"
+SKIP_RESOURCE_PROVIDERS="false"
 
 # Functions
 log() {
@@ -73,6 +75,83 @@ check_dependencies() {
     log "All dependencies are satisfied."
 }
 
+register_resource_providers() {
+    log "Pre-registering Azure resource providers..."
+    
+    # List of required resource providers for AKS and related services
+    local providers=(
+        "Microsoft.ContainerService"
+        "Microsoft.Compute"
+        "Microsoft.Network"
+        "Microsoft.Storage"
+        "Microsoft.ManagedIdentity"
+        "Microsoft.Authorization"
+        "Microsoft.OperationalInsights"
+        "Microsoft.Monitor"
+        "Microsoft.Insights"
+        "Microsoft.KeyVault"
+    )
+    
+    for provider in "${providers[@]}"; do
+        log "Checking provider: $provider"
+        
+        # Check if provider is already registered with retry logic
+        local status
+        local check_retries=3
+        local check_count=0
+        
+        while [[ $check_count -lt $check_retries ]]; do
+            status=$(az provider show --namespace "$provider" --query "registrationState" -o tsv 2>/dev/null || echo "NotRegistered")
+            
+            if [[ "$status" == "Registered" ]]; then
+                log "✅ $provider is already registered"
+                break
+            elif [[ "$status" == "Registering" ]]; then
+                log "🔄 $provider is currently being registered. Waiting..."
+                sleep 10
+                check_count=$((check_count + 1))
+            elif [[ "$status" == "NotRegistered" ]]; then
+                log "📝 Registering $provider..."
+                
+                # Register with retry logic for 409 conflicts
+                local reg_retries=3
+                local reg_count=0
+                local registration_success=false
+                
+                while [[ $reg_count -lt $reg_retries ]]; do
+                    if az provider register --namespace "$provider" 2>/dev/null; then
+                        log "✅ Successfully initiated registration for $provider"
+                        registration_success=true
+                        break
+                    else
+                        reg_count=$((reg_count + 1))
+                        if [[ $reg_count -lt $reg_retries ]]; then
+                            warn "⚠️  Registration attempt $reg_count failed for $provider. Retrying in 5 seconds..."
+                            sleep 5
+                        fi
+                    fi
+                done
+                
+                if [[ "$registration_success" == false ]]; then
+                    warn "⚠️  Failed to register $provider after $reg_retries attempts. Continuing anyway..."
+                fi
+                break
+            else
+                check_count=$((check_count + 1))
+                if [[ $check_count -lt $check_retries ]]; then
+                    warn "⚠️  Unexpected status '$status' for $provider. Retrying in 5 seconds..."
+                    sleep 5
+                else
+                    warn "⚠️  Could not determine status for $provider. Continuing anyway..."
+                fi
+            fi
+        done
+    done
+    
+    log "Resource provider registration completed!"
+    log "Note: Some providers may still be registering in the background. This is normal."
+}
+
 deploy_infrastructure() {
     log "Deploying Azure infrastructure with Terraform..."
     
@@ -90,8 +169,30 @@ deploy_infrastructure() {
     # Plan the deployment
     terraform plan -out=tfplan
     
-    # Apply the deployment
-    terraform apply tfplan
+    # Apply the deployment with retry logic for resource provider conflicts
+    local max_retries=3
+    local retry_count=0
+    
+    while [[ $retry_count -lt $max_retries ]]; do
+        log "Attempting Terraform apply (attempt $((retry_count + 1))/$max_retries)..."
+        
+        if terraform apply tfplan; then
+            log "Terraform apply successful!"
+            break
+        else
+            retry_count=$((retry_count + 1))
+            if [[ $retry_count -lt $max_retries ]]; then
+                warn "Terraform apply failed, likely due to Azure resource provider conflicts. Retrying in 30 seconds..."
+                sleep 30
+                
+                # Re-run terraform plan before retry
+                log "Re-planning deployment..."
+                terraform plan -out=tfplan
+            else
+                error "Terraform apply failed after $max_retries attempts. Please check the error above."
+            fi
+        fi
+    done
     
     # Get outputs
     CLUSTER_NAME=$(terraform output -raw aks_cluster_name)
@@ -234,6 +335,10 @@ main() {
                 DOMAIN_SUFFIX="$2"
                 shift 2
                 ;;
+            --skip-providers)
+                SKIP_RESOURCE_PROVIDERS="true"
+                shift
+                ;;
             --cleanup)
                 cleanup
                 exit 0
@@ -245,6 +350,7 @@ main() {
                 echo "  --cluster-name CLUSTER_NAME Set cluster name"
                 echo "  --location LOCATION         Set Azure location"
                 echo "  --domain-suffix DOMAIN      Set domain suffix"
+                echo "  --skip-providers            Skip Azure resource provider registration"
                 echo "  --cleanup                   Destroy all resources"
                 echo "  --help                      Show this help message"
                 exit 0
@@ -257,6 +363,13 @@ main() {
     
     # Check dependencies
     check_dependencies
+    
+    # Register resource providers (unless skipped)
+    if [[ "$SKIP_RESOURCE_PROVIDERS" != "true" ]]; then
+        register_resource_providers
+    else
+        log "Skipping resource provider registration as requested"
+    fi
     
     # Deploy infrastructure
     deploy_infrastructure

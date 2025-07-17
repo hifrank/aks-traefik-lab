@@ -38,9 +38,15 @@ apply: init ## Apply the Terraform configuration
 deploy: check-deps ## Deploy the complete lab environment
 	@./scripts/deploy.sh
 
+deploy-skip-providers: check-deps ## Deploy the lab environment (skip resource provider registration)
+	@./scripts/deploy.sh --skip-providers
+
 # Validation and status
 validate: ## Validate the deployment
 	@./scripts/validate.sh
+
+troubleshoot: ## Run troubleshooting diagnostics
+	@./scripts/troubleshoot.sh
 
 status: ## Show cluster and application status
 	@echo "=== Cluster Info ==="
