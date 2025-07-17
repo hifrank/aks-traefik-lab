@@ -279,7 +279,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "workload" {
   enable_auto_scaling   = true
   min_count             = var.workload_min_node_count
   max_count             = var.workload_max_node_count
-  zones                 = ["1", "2", "3"]
+  zones                 = var.availability_zones
   vnet_subnet_id        = azurerm_subnet.aks_subnet.id
 
   node_labels = {

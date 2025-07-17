@@ -3,7 +3,7 @@
 
 # Basic configuration
 resource_group_name = "rg-aks-traefik-lab"
-location           = "East US"
+location           = "Southeast Asia"
 cluster_name       = "aks-traefik-lab"
 kubernetes_version = "1.28.5"
 
@@ -13,7 +13,7 @@ kubernetes_version = "1.28.5"
 # - Southeast Asia: ["1", "3"] (zone 2 not supported)
 # - West Europe: ["1", "2", "3"]
 # - Japan East: ["1", "2", "3"]
-availability_zones = ["1", "2", "3"]
+availability_zones = ["1", "3"]
 
 # Default node pool configuration
 node_count     = 2
