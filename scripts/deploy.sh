@@ -347,70 +347,89 @@ cleanup() {
 get_availability_zones() {
     local location="$1"
     
-    case "$location" in
-        "eastus"|"East US"|"eastus2"|"East US 2")
+    # Convert to lowercase and remove spaces for easier matching
+    local normalized_location=$(echo "$location" | tr '[:upper:]' '[:lower:]' | sed 's/ //g')
+    
+    case "$normalized_location" in
+        "eastus"|"eastus2")
             echo '["1", "2", "3"]'
             ;;
-        "southeastasia"|"Southeast Asia"|"eastasia"|"East Asia")
+        "southeastasia"|"eastasia")
             echo '["1", "3"]'
             ;;
-        "westeurope"|"West Europe"|"northeurope"|"North Europe")
+        "westeurope"|"northeurope")
             echo '["1", "2", "3"]'
             ;;
-        "japaneast"|"Japan East"|"japanwest"|"Japan West")
+        "japaneast"|"japanwest")
             echo '["1", "2", "3"]'
             ;;
-        "australiaeast"|"Australia East"|"australiasoutheast"|"Australia Southeast")
+        "australiaeast"|"australiasoutheast")
             echo '["1", "2", "3"]'
             ;;
-        "canadacentral"|"Canada Central"|"canadaeast"|"Canada East")
+        "canadacentral"|"canadaeast")
             echo '["1", "2", "3"]'
             ;;
-        "uksouth"|"UK South"|"ukwest"|"UK West")
+        "uksouth"|"ukwest")
             echo '["1", "2", "3"]'
             ;;
-        "westus2"|"West US 2"|"westus"|"West US")
+        "westus2"|"westus")
             echo '["1", "2", "3"]'
             ;;
-        "centralus"|"Central US"|"southcentralus"|"South Central US")
+        "centralus"|"southcentralus")
             echo '["1", "2", "3"]'
             ;;
-        "francecentral"|"France Central"|"francesouth"|"France South")
+        "francecentral"|"francesouth")
             echo '["1", "2", "3"]'
             ;;
-        "brazilsouth"|"Brazil South")
+        "brazilsouth")
             echo '["1", "2", "3"]'
             ;;
-        "southafricanorth"|"South Africa North")
+        "southafricanorth")
             echo '["1", "2", "3"]'
             ;;
-        "uaenorth"|"UAE North")
+        "uaenorth")
             echo '["1", "2", "3"]'
             ;;
-        "koreasouth"|"Korea South"|"koreacentral"|"Korea Central")
+        "koreasouth"|"koreacentral")
             echo '["1", "2", "3"]'
             ;;
-        "switzerlandnorth"|"Switzerland North"|"switzerlandwest"|"Switzerland West")
+        "switzerlandnorth"|"switzerlandwest")
             echo '["1", "2", "3"]'
             ;;
-        "germanynorth"|"Germany North"|"germanywestcentral"|"Germany West Central")
+        "germanynorth"|"germanywestcentral")
             echo '["1", "2", "3"]'
             ;;
-        "norwayeast"|"Norway East"|"norwaywest"|"Norway West")
+        "norwayeast"|"norwaywest")
             echo '["1", "2", "3"]'
             ;;
         *)
-            warn "Unknown location: $location. Using default zones [1, 3]"
+            warn "Unknown location: $location (normalized: $normalized_location). Using default zones [1, 3]"
             echo '["1", "3"]'
             ;;
     esac
 }
 
 update_availability_zones() {
-    log "Updating availability zones for location: ${LOCATION}"
+    # Read location from terraform.tfvars if it exists
+    local location_from_tfvars
+    if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
+        location_from_tfvars=$(grep '^location' "${TERRAFORM_DIR}/terraform.tfvars" | cut -d'"' -f2)
+        if [[ -n "$location_from_tfvars" ]]; then
+            log "Using location from terraform.tfvars: ${location_from_tfvars}"
+            local effective_location="$location_from_tfvars"
+        else
+            log "No location found in terraform.tfvars, using script default: ${LOCATION}"
+            local effective_location="$LOCATION"
+        fi
+    else
+        log "terraform.tfvars not found, using script default location: ${LOCATION}"
+        local effective_location="$LOCATION"
+    fi
+    
+    log "Updating availability zones for location: ${effective_location}"
     
     local zones
-    zones=$(get_availability_zones "$LOCATION")
+    zones=$(get_availability_zones "$effective_location")
     
     log "Using availability zones: ${zones}"
     
@@ -424,6 +443,7 @@ update_availability_zones() {
             # Add new line
             echo "availability_zones = ${zones}" >> "${TERRAFORM_DIR}/terraform.tfvars"
         fi
+        log "✅ Updated terraform.tfvars with availability_zones = ${zones}"
     else
         warn "terraform.tfvars not found. Will be created from example."
     fi
