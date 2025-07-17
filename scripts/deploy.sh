@@ -196,6 +196,9 @@ deploy_infrastructure() {
     # Update availability zones based on location
     update_availability_zones
     
+    # Update Kubernetes version to latest supported
+    update_kubernetes_version
+    
     # Plan the deployment
     terraform plan -out=tfplan
     
@@ -444,6 +447,60 @@ update_availability_zones() {
             echo "availability_zones = ${zones}" >> "${TERRAFORM_DIR}/terraform.tfvars"
         fi
         log "✅ Updated terraform.tfvars with availability_zones = ${zones}"
+    else
+        warn "terraform.tfvars not found. Will be created from example."
+    fi
+}
+
+get_latest_kubernetes_version() {
+    local location="$1"
+    log "Getting latest supported Kubernetes version for location: ${location}"
+    
+    # Get the latest supported version from Azure
+    local latest_version
+    latest_version=$(az aks get-versions --location "${location}" --query "orchestrators[?isPreview==false].orchestratorVersion" -o tsv | sort -V | tail -n 1)
+    
+    if [[ -n "$latest_version" ]]; then
+        log "Latest supported Kubernetes version: ${latest_version}"
+        echo "$latest_version"
+    else
+        warn "Could not get latest version, using default: 1.29.7"
+        echo "1.29.7"
+    fi
+}
+
+update_kubernetes_version() {
+    # Read location from terraform.tfvars if it exists
+    local location_from_tfvars
+    if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
+        location_from_tfvars=$(grep '^location' "${TERRAFORM_DIR}/terraform.tfvars" | cut -d'"' -f2)
+        if [[ -n "$location_from_tfvars" ]]; then
+            local effective_location="$location_from_tfvars"
+        else
+            local effective_location="$LOCATION"
+        fi
+    else
+        local effective_location="$LOCATION"
+    fi
+    
+    log "Updating Kubernetes version for location: ${effective_location}"
+    
+    # Get the latest supported version
+    local latest_version
+    latest_version=$(get_latest_kubernetes_version "$effective_location")
+    
+    log "Using Kubernetes version: ${latest_version}"
+    
+    # Update terraform.tfvars with the latest version
+    if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
+        if grep -q "kubernetes_version" "${TERRAFORM_DIR}/terraform.tfvars"; then
+            # Replace existing line
+            sed -i '' "s/kubernetes_version = .*/kubernetes_version = \"${latest_version}\"/" "${TERRAFORM_DIR}/terraform.tfvars"
+        else
+            # Add new line
+            echo "kubernetes_version = \"${latest_version}\"" >> "${TERRAFORM_DIR}/terraform.tfvars"
+        fi
+        log "✅ Updated terraform.tfvars with kubernetes_version = \"${latest_version}\""
     else
         warn "terraform.tfvars not found. Will be created from example."
     fi

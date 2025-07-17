@@ -5,7 +5,7 @@
 resource_group_name = "rg-aks-traefik-lab"
 location           = "Southeast Asia"
 cluster_name       = "aks-traefik-lab"
-kubernetes_version = "1.28.5"
+kubernetes_version = "1.29.7"
 
 # Availability zones configuration
 # Choose zones based on your region:

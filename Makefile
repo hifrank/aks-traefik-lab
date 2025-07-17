@@ -10,11 +10,12 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Examples:"
-	@echo "  make deploy                    # Deploy the complete lab"
+	@echo "  make deploy                           # Deploy the complete lab"
 	@echo "  make configure-zones LOCATION=southeastasia  # Configure availability zones"
-	@echo "  make validate                  # Validate the deployment"
-	@echo "  make logs                      # Show application logs"
-	@echo "  make destroy                   # Clean up all resources"
+	@echo "  make update-k8s-version LOCATION=southeastasia  # Update to latest K8s version"
+	@echo "  make validate                         # Validate the deployment"
+	@echo "  make logs                             # Show application logs"
+	@echo "  make destroy                          # Clean up all resources"
 
 # Prerequisites check
 check-deps: ## Check if all required tools are installed
@@ -208,6 +209,29 @@ quick-status: ## Quick status check
 	@echo "Traefik: $(shell kubectl get pods -n traefik -l app.kubernetes.io/name=traefik --no-headers | wc -l) pods"
 	@echo "Sample App: $(shell kubectl get pods -n sample-app -l app=sample-app --no-headers | wc -l) pods"
 	@echo "LoadBalancer IP: $(shell kubectl get service traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+
+check-k8s-version: ## Check available Kubernetes versions in the region
+	@echo "Checking available Kubernetes versions for location: $(LOCATION)"
+	@az aks get-versions --location "$(LOCATION)" --output table
+
+update-k8s-version: ## Update Kubernetes version to latest supported
+	@echo "Updating Kubernetes version for location: $(LOCATION)"
+	@latest_version=$$(az aks get-versions --location "$(LOCATION)" --query "orchestrators[?isPreview==false].orchestratorVersion" -o tsv | sort -V | tail -n 1); \
+	if [ -n "$$latest_version" ]; then \
+		echo "Latest supported version: $$latest_version"; \
+		if [ -f terraform/terraform.tfvars ]; then \
+			if grep -q "kubernetes_version" terraform/terraform.tfvars; then \
+				sed -i '' "s/kubernetes_version = .*/kubernetes_version = \"$$latest_version\"/" terraform/terraform.tfvars; \
+			else \
+				echo "kubernetes_version = \"$$latest_version\"" >> terraform/terraform.tfvars; \
+			fi; \
+			echo "✅ Updated terraform/terraform.tfvars with kubernetes_version = \"$$latest_version\""; \
+		else \
+			echo "⚠️  terraform/terraform.tfvars not found. Run 'make dev-setup' first."; \
+		fi; \
+	else \
+		echo "❌ Could not get latest version"; \
+	fi
 
 # Default values
 RESOURCE_GROUP ?= rg-aks-traefik-lab

@@ -20,7 +20,7 @@ variable "cluster_name" {
 variable "kubernetes_version" {
   description = "Kubernetes version for AKS cluster"
   type        = string
-  default     = "1.28.5"
+  default     = "1.29.7"
 }
 
 # Default node pool variables

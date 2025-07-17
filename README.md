@@ -280,7 +280,26 @@ availability_zones = ["1", "3"]
 - **West Europe**: `["1", "2", "3"]`
 - **Japan East**: `["1", "2", "3"]`
 
-#### 2. Resource Provider Not Registered
+#### 2. Kubernetes Version Not Supported
+
+**Error**: `Managed cluster is on version 1.28.5, which is only available for Long-Term Support (LTS)`
+
+**Solution**: Update to a supported Kubernetes version for your region:
+
+```bash
+# Check available versions
+make check-k8s-version LOCATION="Southeast Asia"
+
+# Update to latest supported version
+make update-k8s-version LOCATION="Southeast Asia"
+
+# Or manually edit terraform/terraform.tfvars
+kubernetes_version = "1.29.7"
+```
+
+**Why this happens**: Some Kubernetes versions are only available for Premium (LTS) clusters, but the lab uses the Free tier by default.
+
+#### 3. Resource Provider Not Registered
 
 **Error**: `The subscription is not registered to use namespace 'Microsoft.ContainerService'`
 
