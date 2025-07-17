@@ -1,4 +1,10 @@
-# Default values for traefik-aks
+# Default  # Use Application Gateway for Containers as external gateway
+  useApplicationGatewayForContainers: true
+  # Application Gateway for Containers configuration
+  applicationGatewayForContainers:
+    name: "application-gateway-for-containers"
+    namespace: "system"
+    className: "azure-alb-external"alues for traefik-aks
 # This is a YAML-formatted file.
 
 # Global configuration
@@ -7,6 +13,8 @@ global:
   environment: "dev"
   # -- Domain suffix for ingress hosts
   domainSuffix: "example.com"
+  # -- Use Application Gateway for Containers as external gateway
+  useApplicationGatewayForContainers: true
 
 # Traefik configuration
 traefik:
@@ -40,6 +48,7 @@ traefik:
     enabled: true
     type: LoadBalancer
     annotations:
+      # Internal load balancer since external access is via Application Gateway for Containers
       service.beta.kubernetes.io/azure-load-balancer-internal: "true"
     spec:
       loadBalancerIP: ""

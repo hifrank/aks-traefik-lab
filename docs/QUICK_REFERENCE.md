@@ -40,11 +40,24 @@ make destroy
 
 ## 🌐 Default URLs
 
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| Traefik Dashboard | `https://traefik.example.com/dashboard/` | admin/password |
-| Sample App (Traefik) | `https://sample-app.example.com` | - |
-| Sample App (AGIC) | `https://sample-app-agic.example.com` | - |
+| Service | URL | Access Method |
+|---------|-----|---------------|
+| Traefik Dashboard | `https://traefik.example.com/dashboard/` | Via ALB → Traefik |
+| Sample App | `https://sample-app.example.com` | Via ALB → Traefik |
+| Traefik Dashboard (Direct) | `http://localhost:8080/dashboard/` | Port-forward |
+
+**Note**: ALB = Application Gateway for Containers (Application Load Balancer)
+
+## 📊 Architecture Overview
+
+```
+Internet → Application Gateway for Containers → Traefik → Sample App
+```
+
+- **External Gateway**: Application Gateway for Containers (ALB)
+- **Internal Gateway**: Traefik with middlewares
+- **Gateway API**: HTTPRoute for external routing
+- **Traefik CRDs**: IngressRoute for internal routing
 
 ## 🔍 Troubleshooting Commands
 
@@ -55,8 +68,13 @@ kubectl get pods -A
 # Check Traefik logs
 kubectl logs -n traefik -l app.kubernetes.io/name=traefik -f
 
-# Check AGIC logs
-kubectl logs -n kube-system -l app=ingress-appgw
+# Check Application Gateway for Containers
+kubectl get gateway -A
+kubectl get httproute -A
+kubectl logs -n system -l app=application-gateway-for-containers
+
+# Check Gateway API CRDs
+kubectl get crd | grep gateway
 
 # Check events
 kubectl get events -A --sort-by='.lastTimestamp'
@@ -77,6 +95,11 @@ kubectl top pods -A
 
 # Service endpoints
 kubectl get endpoints -A
+
+# Gateway API resources
+kubectl get gateway -A
+kubectl get httproute -A
+kubectl get gatewayclasses
 
 # Ingress status
 kubectl get ingressroute -A
@@ -128,13 +151,33 @@ kubectl get secrets -n traefik
 kubectl get secret traefik-dashboard-tls -n traefik -o yaml
 ```
 
-### Issue: Application Gateway not working
+### Issue: Application Gateway for Containers not working
 ```bash
-# Check AGIC pod logs
-kubectl logs -n kube-system -l app=ingress-appgw
+# Check Gateway API CRDs
+kubectl get crd | grep gateway
 
-# Check Application Gateway configuration
-az network application-gateway show -g <resource-group> -n <agw-name>
+# Check Gateway status
+kubectl describe gateway application-gateway-for-containers -n system
+
+# Check HTTPRoute status
+kubectl get httproute -A
+kubectl describe httproute -A
+
+# Check ALB in Azure
+az network application-gateway list --resource-group <resource-group>
+
+# Check ALB subnet delegation
+az network vnet subnet show --resource-group <resource-group> --vnet-name <vnet> --name <alb-subnet>
+```
+
+### Issue: Gateway API not available
+```bash
+# Install Gateway API CRDs
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+
+# Verify installation
+kubectl get crd | grep gateway
+kubectl get gatewayclasses
 ```
 
 ## 🏗️ Architecture Components
@@ -146,7 +189,7 @@ az network application-gateway show -g <resource-group> -n <agw-name>
 │ • Resource Group                                                │
 │ • Virtual Network (10.0.0.0/16)                               │
 │ • AKS Cluster (Azure CNI)                                     │
-│ • Application Gateway                                          │
+│ • Application Gateway for Containers (ALB)                    │
 │ • Managed Identities                                          │
 │ • Log Analytics Workspace                                     │
 └─────────────────────────────────────────────────────────────────┘
@@ -155,14 +198,19 @@ az network application-gateway show -g <resource-group> -n <agw-name>
 ┌─────────────────────────────────────────────────────────────────┐
 │                   Kubernetes Resources                         │
 ├─────────────────────────────────────────────────────────────────┤
+│ • Gateway API (Gateway, HTTPRoute)                            │
 │ • Traefik Deployment (2 replicas)                             │
-│ • Traefik Service (LoadBalancer)                              │
+│ • Traefik Service (LoadBalancer - Internal)                   │
 │ • IngressRoutes (CRDs)                                        │
 │ • Middlewares (Security, CORS, etc.)                          │
 │ • Sample Application                                           │
-│ • AGIC (Application Gateway Ingress Controller)               │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Traffic Flow:**
+1. Internet → Application Gateway for Containers (ALB)
+2. ALB → Traefik (via HTTPRoute)
+3. Traefik → Applications (via IngressRoute)
 
 ## 📈 Scaling
 

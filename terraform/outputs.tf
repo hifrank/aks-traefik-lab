@@ -40,25 +40,20 @@ output "aks_cluster_kubelet_identity_object_id" {
   value       = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
 }
 
-# Application Gateway outputs
-output "application_gateway_name" {
-  description = "Name of the Application Gateway"
-  value       = azurerm_application_gateway.agw.name
+# Application Gateway for Containers (ALB) outputs
+output "application_load_balancer_name" {
+  description = "Name of the Application Load Balancer"
+  value       = azurerm_application_load_balancer.main.name
 }
 
-output "application_gateway_id" {
-  description = "ID of the Application Gateway"
-  value       = azurerm_application_gateway.agw.id
+output "application_load_balancer_id" {
+  description = "ID of the Application Load Balancer"
+  value       = azurerm_application_load_balancer.main.id
 }
 
-output "application_gateway_public_ip" {
-  description = "Public IP address of the Application Gateway"
-  value       = azurerm_public_ip.agw_pip.ip_address
-}
-
-output "application_gateway_fqdn" {
-  description = "FQDN of the Application Gateway"
-  value       = azurerm_public_ip.agw_pip.fqdn
+output "application_load_balancer_frontend_id" {
+  description = "ID of the Application Load Balancer frontend"
+  value       = azurerm_application_load_balancer_frontend.main.id
 }
 
 # Network outputs
@@ -77,9 +72,9 @@ output "aks_subnet_id" {
   value       = azurerm_subnet.aks_subnet.id
 }
 
-output "agw_subnet_id" {
-  description = "ID of the Application Gateway subnet"
-  value       = azurerm_subnet.agw_subnet.id
+output "alb_subnet_id" {
+  description = "ID of the Application Load Balancer subnet"
+  value       = azurerm_subnet.alb_subnet.id
 }
 
 # Managed Identity outputs
@@ -91,16 +86,6 @@ output "aks_identity_id" {
 output "aks_identity_principal_id" {
   description = "Principal ID of the AKS managed identity"
   value       = azurerm_user_assigned_identity.aks_identity.principal_id
-}
-
-output "agw_identity_id" {
-  description = "ID of the Application Gateway managed identity"
-  value       = azurerm_user_assigned_identity.agw_identity.id
-}
-
-output "agw_identity_principal_id" {
-  description = "Principal ID of the Application Gateway managed identity"
-  value       = azurerm_user_assigned_identity.agw_identity.principal_id
 }
 
 # Log Analytics outputs
@@ -127,7 +112,7 @@ output "connection_info" {
     resource_group     = azurerm_resource_group.main.name
     cluster_name       = azurerm_kubernetes_cluster.aks.name
     location           = azurerm_resource_group.main.location
-    public_ip          = azurerm_public_ip.agw_pip.ip_address
+    alb_name           = azurerm_application_load_balancer.main.name
     kubeconfig_command = "az aks get-credentials --resource-group ${azurerm_resource_group.main.name} --name ${azurerm_kubernetes_cluster.aks.name}"
   }
 }

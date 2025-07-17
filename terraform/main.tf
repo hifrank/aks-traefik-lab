@@ -50,12 +50,23 @@ resource "azurerm_subnet" "aks_subnet" {
   address_prefixes     = ["10.0.1.0/24"]
 }
 
-# Create subnet for Application Gateway
-resource "azurerm_subnet" "agw_subnet" {
-  name                 = "${var.cluster_name}-agw-subnet"
+# Create subnet for Application Gateway for Containers
+resource "azurerm_subnet" "alb_subnet" {
+  name                 = "${var.cluster_name}-alb-subnet"
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.aks_vnet.name
   address_prefixes     = ["10.0.2.0/24"]
+  
+  # Enable delegation for Application Gateway for Containers
+  delegation {
+    name = "Microsoft.ServiceNetworking/trafficControllers"
+    service_delegation {
+      name    = "Microsoft.ServiceNetworking/trafficControllers"
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+      ]
+    }
+  }
 }
 
 # Create Log Analytics Workspace for monitoring
@@ -78,15 +89,6 @@ resource "azurerm_user_assigned_identity" "aks_identity" {
   tags = var.tags
 }
 
-# Create User Assigned Managed Identity for Application Gateway
-resource "azurerm_user_assigned_identity" "agw_identity" {
-  name                = "${var.cluster_name}-agw-identity"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-
-  tags = var.tags
-}
-
 # Role assignment for AKS identity to manage network resources
 resource "azurerm_role_assignment" "aks_network_contributor" {
   scope                = azurerm_virtual_network.aks_vnet.id
@@ -99,92 +101,6 @@ resource "azurerm_role_assignment" "aks_agw_contributor" {
   scope                = azurerm_resource_group.main.id
   role_definition_name = "Contributor"
   principal_id         = azurerm_user_assigned_identity.aks_identity.principal_id
-}
-
-# Role assignment for AGW identity
-resource "azurerm_role_assignment" "agw_contributor" {
-  scope                = azurerm_resource_group.main.id
-  role_definition_name = "Contributor"
-  principal_id         = azurerm_user_assigned_identity.agw_identity.principal_id
-}
-
-# Create Public IP for Application Gateway
-resource "azurerm_public_ip" "agw_pip" {
-  name                = "${var.cluster_name}-agw-pip"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  allocation_method   = "Static"
-  sku                 = "Standard"
-
-  tags = var.tags
-}
-
-# Create Application Gateway
-resource "azurerm_application_gateway" "agw" {
-  name                = "${var.cluster_name}-agw"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-
-  sku {
-    name     = "Standard_v2"
-    tier     = "Standard_v2"
-    capacity = 2
-  }
-
-  gateway_ip_configuration {
-    name      = "gateway-ip-configuration"
-    subnet_id = azurerm_subnet.agw_subnet.id
-  }
-
-  frontend_port {
-    name = "http-port"
-    port = 80
-  }
-
-  frontend_port {
-    name = "https-port"
-    port = 443
-  }
-
-  frontend_ip_configuration {
-    name                 = "public-frontend-ip"
-    public_ip_address_id = azurerm_public_ip.agw_pip.id
-  }
-
-  backend_address_pool {
-    name = "default-backend-pool"
-  }
-
-  backend_http_settings {
-    name                  = "default-backend-http-settings"
-    cookie_based_affinity = "Disabled"
-    port                  = 80
-    protocol              = "Http"
-    request_timeout       = 20
-  }
-
-  http_listener {
-    name                           = "default-listener"
-    frontend_ip_configuration_name = "public-frontend-ip"
-    frontend_port_name             = "http-port"
-    protocol                       = "Http"
-  }
-
-  request_routing_rule {
-    name                       = "default-rule"
-    rule_type                  = "Basic"
-    priority                   = 1
-    http_listener_name         = "default-listener"
-    backend_address_pool_name  = "default-backend-pool"
-    backend_http_settings_name = "default-backend-http-settings"
-  }
-
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.agw_identity.id]
-  }
-
-  tags = var.tags
 }
 
 # Create AKS Cluster
@@ -220,30 +136,16 @@ resource "azurerm_kubernetes_cluster" "aks" {
   # Configure Azure CNI networking
   network_profile {
     network_plugin      = "azure"
-    dns_service_ip      = "10.0.0.10"
-    docker_bridge_cidr  = "172.17.0.1/16"
-    service_cidr        = "10.0.0.0/16"
+    dns_service_ip      = "10.240.0.10"
+    service_cidr        = "10.240.0.0/16"
     load_balancer_sku   = "standard"
     outbound_type       = "loadBalancer"
-  }
-
-  # Enable Azure AD integration
-  azure_active_directory_role_based_access_control {
-    managed = true
   }
 
   # Enable monitoring
   oms_agent {
     log_analytics_workspace_id = azurerm_log_analytics_workspace.aks_logs.id
   }
-
-  # Enable Application Gateway Ingress Controller
-  ingress_application_gateway {
-    gateway_id = azurerm_application_gateway.agw.id
-  }
-
-  # Enable HTTP application routing (optional)
-  http_application_routing_enabled = false
 
   # Enable Azure Policy
   azure_policy_enabled = true
@@ -266,7 +168,6 @@ resource "azurerm_kubernetes_cluster" "aks" {
   depends_on = [
     azurerm_role_assignment.aks_network_contributor,
     azurerm_role_assignment.aks_agw_contributor,
-    azurerm_role_assignment.agw_contributor,
   ]
 }
 
@@ -295,6 +196,35 @@ resource "azurerm_kubernetes_cluster_node_pool" "workload" {
   }
 
   tags = var.tags
+}
+
+# Create Application Gateway for Containers (ALB)
+resource "azurerm_application_load_balancer" "main" {
+  name                = "${var.cluster_name}-alb"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+
+  tags = var.tags
+}
+
+# Create ALB subnet association
+resource "azurerm_application_load_balancer_subnet_association" "main" {
+  name                         = "${var.cluster_name}-alb-subnet-association"
+  application_load_balancer_id = azurerm_application_load_balancer.main.id
+  subnet_id                    = azurerm_subnet.alb_subnet.id
+}
+
+# Create ALB frontend
+resource "azurerm_application_load_balancer_frontend" "main" {
+  name                         = "${var.cluster_name}-alb-frontend"
+  application_load_balancer_id = azurerm_application_load_balancer.main.id
+}
+
+# Role assignment for AKS identity to manage ALB
+resource "azurerm_role_assignment" "aks_alb_contributor" {
+  scope                = azurerm_application_load_balancer.main.id
+  role_definition_name = "Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks_identity.principal_id
 }
 
 # Create role assignment for AKS to read ACR (if needed)

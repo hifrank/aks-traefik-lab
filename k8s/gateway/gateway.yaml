@@ -1,0 +1,52 @@
+---
+# Gateway API Gateway resource for Application Gateway for Containers
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: Gateway
+metadata:
+  name: application-gateway-for-containers
+  namespace: system
+  annotations:
+    alb.networking.azure.io/alb-name: aks-traefik-lab-alb
+    alb.networking.azure.io/alb-namespace: system
+spec:
+  gatewayClassName: azure-alb-external
+  listeners:
+  - name: http-listener
+    port: 80
+    protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: All
+  - name: https-listener
+    port: 443
+    protocol: HTTPS
+    allowedRoutes:
+      namespaces:
+        from: All
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - kind: Secret
+        name: gateway-tls-secret
+        namespace: system
+---
+# TLS Secret for HTTPS termination (replace with your actual certificate)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gateway-tls-secret
+  namespace: system
+type: kubernetes.io/tls
+data:
+  # Replace with your actual certificate and key (base64 encoded)
+  # For testing, you can use self-signed certificates
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t...
+  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t...
+---
+# Application Gateway for Containers namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: system
+  labels:
+    name: system

@@ -6,12 +6,12 @@ A comprehensive lab for deploying and configuring Traefik as an Ingress Controll
 
 - **Azure Kubernetes Service (AKS)** with Azure CNI networking
 - **Traefik v3** as the primary Ingress Controller
-- **Azure Application Gateway for Containers (AGIC)** integration
+- **Azure Application Gateway for Containers (AGIC)** as the external gateway
 - **Managed Identity** for secure authentication
 - **Auto-scaling** node pools with availability zones
 - **Monitoring** with Azure Monitor and Log Analytics
 - **Security** best practices with RBAC and network policies
-- **Sample applications** with IngressRoute examples
+- **Sample applications** with gateway routing examples
 
 ## 📋 Prerequisites
 
@@ -31,8 +31,11 @@ Before you begin, ensure you have the following installed:
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                 Azure Application Gateway                      │
-│                   (Public IP Address)                          │
+│       Azure Application Gateway for Containers (ALB)           │
+│              (Gateway API Implementation)                      │
+│                  - HTTP/HTTPS Termination                      │
+│                  - WAF Protection                              │
+│                  - SSL Offloading                              │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
@@ -40,20 +43,33 @@ Before you begin, ensure you have the following installed:
 │                      AKS Cluster                               │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
 │  │  Default Node   │  │  Workload Node  │  │      Traefik    │  │
-│  │     Pool        │  │     Pool        │  │   LoadBalancer  │  │
+│  │     Pool        │  │     Pool        │  │  LoadBalancer   │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────────┐ │
 │  │                 Traefik Ingress Controller                  │ │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │ │
-│  │  │ IngressRoute│  │ Middlewares │  │    Sample App       │ │ │
-│  │  │   (CRDs)    │  │   (CORS,    │  │   (Nginx + API)     │ │ │
-│  │  │             │  │  Security,  │  │                     │ │ │
-│  │  │             │  │  Rate Limit)│  │                     │ │ │
+│  │  │   Gateway   │  │ IngressRoute│  │    Sample App       │ │ │
+│  │  │   HTTPRoute │  │    (CRDs)   │  │   (Nginx + API)     │ │ │
+│  │  │    (K8s)    │  │ Middlewares │  │                     │ │ │
+│  │  │             │  │  (Security, │  │                     │ │ │
+│  │  │             │  │ Rate Limit) │  │                     │ │ │
 │  │  └─────────────┘  └─────────────┘  └─────────────────────┘ │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Traffic Flow:**
+1. **Internet** → **Application Gateway for Containers** (External gateway with Gateway API)
+2. **Application Gateway for Containers** → **Traefik LoadBalancer** (Internal routing via HTTPRoute)
+3. **Traefik** → **Sample Web Server** (Application deployment via IngressRoute)
+
+**Key Components:**
+- **Application Gateway for Containers (ALB)**: Azure's managed Gateway API implementation
+- **Gateway API**: Kubernetes standard for ingress traffic management
+- **HTTPRoute**: Routes traffic from ALB to Traefik
+- **Traefik**: Advanced ingress controller with middleware support
+- **IngressRoute**: Traefik-specific routing to applications
 
 ## 🚀 Quick Start
 
@@ -97,43 +113,58 @@ The deployment script will:
 After deployment, add these entries to your `/etc/hosts` file:
 
 ```
-<APPLICATION_GATEWAY_IP> sample-app-agic.example.com
-<TRAEFIK_LOADBALANCER_IP> sample-app.example.com
-<TRAEFIK_LOADBALANCER_IP> traefik.example.com
+# Get the ALB frontend IP address
+kubectl get gateway application-gateway-for-containers -n system -o jsonpath='{.status.addresses[0].value}'
+
+# Add to /etc/hosts
+<ALB_FRONTEND_IP> sample-app.example.com
+<ALB_FRONTEND_IP> traefik.example.com
 ```
 
 Then access:
-- **Sample App (via AGIC)**: https://sample-app-agic.example.com
-- **Sample App (via Traefik)**: https://sample-app.example.com
-- **Traefik Dashboard**: https://traefik.example.com/dashboard/
+- **Sample App (via ALB → Traefik)**: https://sample-app.example.com
+- **Traefik Dashboard (via ALB → Traefik)**: https://traefik.example.com/dashboard/
+
+**Alternative Access (Direct to Traefik):**
+```bash
+# Port-forward to Traefik dashboard
+kubectl port-forward -n traefik svc/traefik-dashboard 8080:8080
+# Then access: http://localhost:8080/dashboard/
+```
 
 ## 📁 Project Structure
 
 ```
 aks-traefik-lab/
 ├── terraform/                     # Terraform configuration
-│   ├── main.tf                   # Main AKS and AGIC configuration
+│   ├── main.tf                   # Main AKS and ALB configuration
 │   ├── variables.tf              # Variable definitions
 │   ├── outputs.tf                # Output values
 │   └── terraform.tfvars.example  # Example variables
 ├── k8s/                          # Kubernetes manifests
+│   ├── gateway/                  # Gateway API resources
+│   │   └── gateway.yaml         # Application Gateway for Containers
 │   ├── traefik/                  # Traefik configuration
 │   │   ├── 00-rbac.yaml         # RBAC permissions
 │   │   ├── 01-config.yaml       # Traefik configuration
 │   │   ├── 02-deployment.yaml   # Traefik deployment
 │   │   ├── 03-service.yaml      # Traefik services
-│   │   ├── 04-ingress.yaml      # Dashboard ingress
-│   │   └── 05-middlewares.yaml  # Common middlewares
+│   │   └── 04-middlewares.yaml  # Common middlewares
 │   └── sample-app/              # Sample application
 │       ├── sample-app.yaml      # Application deployment
-│       └── ingress-route.yaml   # IngressRoute examples
+│       ├── ingress-route.yaml   # Traefik IngressRoute
+│       └── gateway-routes.yaml  # Gateway API HTTPRoute
 ├── helm/                        # Helm charts
 │   └── traefik-aks/            # Traefik Helm chart
 │       ├── Chart.yaml
 │       ├── values.yaml
 │       └── templates/
+│           ├── gateway.yaml     # Gateway API resources
+│           └── httproute.yaml   # HTTPRoute templates
 └── scripts/                    # Deployment scripts
-    └── deploy.sh              # Main deployment script
+    ├── deploy.sh              # Main deployment script
+    ├── validate.sh            # Validation script
+    └── troubleshoot.sh        # Troubleshooting script
 ```
 
 ## 🔧 Configuration
@@ -172,8 +203,9 @@ tags = {
 ### Traefik Configuration
 
 Traefik is configured with:
-- **TLS termination** with automatic HTTPS redirect
-- **Dashboard** with basic authentication
+- **External gateway integration** with Application Gateway for Containers
+- **TLS termination** handled by the external gateway
+- **Dashboard** accessible through the gateway
 - **Metrics** for Prometheus monitoring
 - **Middlewares** for security, CORS, rate limiting
 - **Load balancing** across multiple replicas
@@ -220,10 +252,15 @@ kubectl logs -n traefik -l app.kubernetes.io/name=traefik -f
 # Check Traefik configuration
 kubectl get ingressroute -A
 kubectl get middleware -A
-kubectl get tlsoption -A
+kubectl get service -n traefik
 
-# Check Application Gateway Ingress Controller
-kubectl logs -n kube-system -l app=ingress-appgw
+# Check Application Gateway for Containers
+kubectl get gateway -A
+kubectl get httproute -A
+kubectl logs -n system -l app=application-gateway-for-containers
+
+# Check Gateway API CRDs
+kubectl get crd | grep gateway
 
 # Check sample app
 kubectl logs -n sample-app -l app=sample-app
@@ -366,7 +403,43 @@ kubectl get certificate -A
 kubectl logs -n cert-manager -l app=cert-manager
 ```
 
-#### 8. Load Balancer IP Not Assigned
+#### 8. Gateway API Issues
+
+**Issue**: Gateway or HTTPRoute not working
+
+**Solution**: 
+```bash
+# Check if Gateway API CRDs are installed
+kubectl get crd | grep gateway
+
+# Install Gateway API CRDs if missing
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+
+# Check Gateway status
+kubectl describe gateway application-gateway-for-containers -n system
+
+# Check HTTPRoute status
+kubectl get httproute -A
+kubectl describe httproute -A
+```
+
+#### 9. Application Gateway for Containers Issues
+
+**Issue**: ALB not provisioning correctly
+
+**Solution**: 
+```bash
+# Check ALB resource in Azure
+az network application-gateway list --resource-group <resource-group>
+
+# Check ALB subnet delegation
+az network vnet subnet show --resource-group <resource-group> --vnet-name <vnet-name> --name <alb-subnet-name>
+
+# Verify managed identity permissions
+az role assignment list --assignee <managed-identity-principal-id>
+```
+
+#### 10. Load Balancer IP Not Assigned
 
 **Issue**: External IP shows as `<pending>`
 

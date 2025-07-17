@@ -25,23 +25,24 @@ CLUSTER_NAME="aks-traefik-lab"
 LOCATION="eastus"
 DOMAIN_SUFFIX="example.com"
 SKIP_RESOURCE_PROVIDERS="false"
+DEPLOY_MAX_RETRIES="${DEPLOY_MAX_RETRIES:-1}"
 
 # Functions
 log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
+    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1" >&2
 }
 
 warn() {
-    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] WARNING:${NC} $1"
+    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] WARNING:${NC} $1" >&2
 }
 
 error() {
-    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ERROR:${NC} $1"
+    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ERROR:${NC} $1" >&2
     exit 1
 }
 
 info() {
-    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO:${NC} $1"
+    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO:${NC} $1" >&2
 }
 
 check_dependencies() {
@@ -178,46 +179,28 @@ validate_terraform_config() {
 
 deploy_infrastructure() {
     log "Deploying Azure infrastructure with Terraform..."
-    
     cd "${TERRAFORM_DIR}"
-    
-    # Initialize Terraform
     terraform init
-    
-    # Validate Terraform configuration
     validate_terraform_config
-    
-    # Create terraform.tfvars if it doesn't exist
     if [[ ! -f "terraform.tfvars" ]]; then
         log "Creating terraform.tfvars from example..."
         cp terraform.tfvars.example terraform.tfvars
     fi
-    
-    # Update availability zones based on location
     update_availability_zones
-    
-    # Plan the deployment
     terraform plan -out=tfplan
-    
-    # Apply the deployment with retry logic for resource provider conflicts
-    local max_retries=3
+    local max_retries=${DEPLOY_MAX_RETRIES:-1}
     local retry_count=0
-    
     while [[ $retry_count -lt $max_retries ]]; do
         log "Attempting Terraform apply (attempt $((retry_count + 1))/$max_retries)..."
-        
         if terraform apply tfplan; then
             log "Terraform apply successful!"
             break
         else
             local exit_code=$?
             retry_count=$((retry_count + 1))
-            
             if [[ $retry_count -lt $max_retries ]]; then
                 warn "Terraform apply failed (exit code: $exit_code). Retrying in 30 seconds..."
                 sleep 30
-                
-                # Re-run terraform plan before retry
                 log "Re-planning deployment..."
                 terraform plan -out=tfplan
             else
@@ -225,11 +208,8 @@ deploy_infrastructure() {
             fi
         fi
     done
-    
-    # Get outputs
     CLUSTER_NAME=$(terraform output -raw aks_cluster_name)
     RESOURCE_GROUP=$(terraform output -raw resource_group_name)
-    
     log "Infrastructure deployed successfully!"
     log "Cluster Name: ${CLUSTER_NAME}"
     log "Resource Group: ${RESOURCE_GROUP}"
@@ -250,10 +230,22 @@ configure_kubectl() {
 deploy_traefik() {
     log "Deploying Traefik..."
     
-    # Create namespace
-    kubectl create namespace traefik --dry-run=client -o yaml | kubectl apply -f -
+    # Install Gateway API CRDs
+    log "Installing Gateway API CRDs..."
+    kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
     
-    # Apply RBAC
+    # Wait for CRDs to be ready
+    kubectl wait --for condition=established --timeout=300s crd/gateways.gateway.networking.k8s.io
+    kubectl wait --for condition=established --timeout=300s crd/httproutes.gateway.networking.k8s.io
+    
+    # Create namespaces
+    kubectl create namespace traefik --dry-run=client -o yaml | kubectl apply -f -
+    kubectl create namespace system --dry-run=client -o yaml | kubectl apply -f -
+    
+    # Deploy Gateway API resources
+    kubectl apply -f "${K8S_DIR}/gateway/"
+    
+    # Apply Traefik resources
     kubectl apply -f "${K8S_DIR}/traefik/"
     
     # Wait for deployment
@@ -280,31 +272,31 @@ deploy_sample_app() {
 get_access_info() {
     log "Getting access information..."
     
-    # Get Application Gateway IP
-    local agw_ip
-    agw_ip=$(cd "${TERRAFORM_DIR}" && terraform output -raw application_gateway_public_ip)
+    # Get Application Gateway for Containers name
+    local alb_name
+    alb_name=$(cd "${TERRAFORM_DIR}" && terraform output -raw application_load_balancer_name)
     
     # Get Traefik service IP
     local traefik_ip
     traefik_ip=$(kubectl get service traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
     
     info "=== Access Information ==="
-    info "Application Gateway IP: ${agw_ip}"
+    info "Application Gateway for Containers: ${alb_name}"
     info "Traefik LoadBalancer IP: ${traefik_ip}"
     info ""
     info "To access the applications, add these entries to your /etc/hosts file:"
-    info "${agw_ip} sample-app-agic.${DOMAIN_SUFFIX}"
-    info "${traefik_ip} sample-app.${DOMAIN_SUFFIX}"
-    info "${traefik_ip} traefik.${DOMAIN_SUFFIX}"
+    info "# Note: Application Gateway for Containers will provide external access"
+    info "# Replace <ALB_IP> with the actual ALB frontend IP"
+    info "<ALB_IP> sample-app.${DOMAIN_SUFFIX}"
+    info "<ALB_IP> traefik.${DOMAIN_SUFFIX}"
     info ""
     info "Applications:"
-    info "- Sample App (via AGIC): https://sample-app-agic.${DOMAIN_SUFFIX}"
-    info "- Sample App (via Traefik): https://sample-app.${DOMAIN_SUFFIX}"
-    info "- Traefik Dashboard: https://traefik.${DOMAIN_SUFFIX}/dashboard/"
+    info "- Sample App (via ALB → Traefik): https://sample-app.${DOMAIN_SUFFIX}"
+    info "- Traefik Dashboard (via ALB → Traefik): https://traefik.${DOMAIN_SUFFIX}/dashboard/"
     info ""
-    info "Traefik Dashboard Login:"
-    info "Username: admin"
-    info "Password: password"
+    info "Direct access via port-forward:"
+    info "kubectl port-forward -n traefik svc/traefik-dashboard 8080:8080"
+    info "Then access: http://localhost:8080/dashboard/"
 }
 
 show_monitoring_info() {
@@ -319,13 +311,15 @@ show_monitoring_info() {
     info "kubectl get middleware -A"
     info "kubectl get tlsoption -A"
     info ""
-    info "# Check Application Gateway Ingress Controller"
-    info "kubectl logs -n kube-system -l app=ingress-appgw"
+    info "# Check Application Gateway for Containers"
+    info "kubectl get gateway -A"
+    info "kubectl get httproute -A"
+    info "kubectl logs -n system -l app=application-gateway-for-containers"
     info ""
     info "# Check sample app"
     info "kubectl logs -n sample-app -l app=sample-app"
     info ""
-    info "# Port forward to Traefik dashboard (if ingress is not working)"
+    info "# Port forward to Traefik dashboard (if gateway is not working)"
     info "kubectl port-forward -n traefik svc/traefik-dashboard 8080:8080"
     info "# Then access: http://localhost:8080/dashboard/"
 }

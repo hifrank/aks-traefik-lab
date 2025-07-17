@@ -38,14 +38,17 @@ apply: init ## Apply the Terraform configuration
 
 # Complete deployment
 deploy: check-deps ## Deploy the complete lab environment
-	@./scripts/deploy.sh
+	DEPLOY_MAX_RETRIES=$(RETRIES) ./scripts/deploy.sh
 
 deploy-skip-providers: check-deps ## Deploy the lab environment (skip resource provider registration)
-	@./scripts/deploy.sh --skip-providers
+	DEPLOY_MAX_RETRIES=$(RETRIES) ./scripts/deploy.sh --skip-providers
 
 # Validation and status
 validate: ## Validate the deployment
 	@./scripts/validate.sh
+
+validate-gateway-api: ## Validate Gateway API configuration
+	@./scripts/validate-gateway-api.sh
 
 troubleshoot: ## Run troubleshooting diagnostics
 	@./scripts/troubleshoot.sh
@@ -62,6 +65,10 @@ status: ## Show cluster and application status
 	@echo ""
 	@echo "=== Sample App Status ==="
 	@kubectl get pods,svc -n sample-app
+	@echo ""
+	@echo "=== Gateway API Resources ==="
+	@kubectl get gateway -A
+	@kubectl get httproute -A
 	@echo ""
 	@echo "=== Ingress Resources ==="
 	@kubectl get ingressroute,middleware -A

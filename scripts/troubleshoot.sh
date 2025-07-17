@@ -200,29 +200,29 @@ check_terraform_state() {
 }
 
 check_application_gateway_config() {
-    log "Checking Application Gateway configuration..."
+    log "Checking Application Gateway for Containers configuration..."
     
     local terraform_dir="../terraform"
     
     if [[ -d "$terraform_dir" ]]; then
         cd "$terraform_dir"
         
-        # Check for common Application Gateway configuration issues
+        # Check for Application Gateway for Containers configuration
         if [[ -f "main.tf" ]]; then
             log "✅ main.tf found"
             
-            # Check if request routing rule has priority
-            if grep -q "priority" main.tf; then
-                log "✅ Request routing rule priority is configured"
+            # Check if Application Load Balancer is configured
+            if grep -q "azurerm_application_load_balancer" main.tf; then
+                log "✅ Application Load Balancer (ALB) is configured"
             else
-                warn "⚠️  Request routing rule might be missing priority (required for API version 2021-08-01+)"
+                warn "⚠️  Application Load Balancer (ALB) configuration not found"
             fi
             
-            # Check SKU configuration
-            if grep -q "Standard_v2" main.tf; then
-                log "✅ Using Standard_v2 SKU (recommended)"
+            # Check if ALB subnet is configured
+            if grep -q "Microsoft.ServiceNetworking/trafficControllers" main.tf; then
+                log "✅ ALB subnet delegation is configured"
             else
-                warn "⚠️  Consider using Standard_v2 SKU for better performance"
+                warn "⚠️  ALB subnet delegation configuration not found"
             fi
             
             # Check if managed identity is configured
@@ -231,6 +231,13 @@ check_application_gateway_config() {
             else
                 warn "⚠️  Managed identity configuration not found"
             fi
+            
+            # Check if ALB frontend is configured
+            if grep -q "azurerm_application_load_balancer_frontend" main.tf; then
+                log "✅ ALB frontend is configured"
+            else
+                warn "⚠️  ALB frontend configuration not found"
+            fi
         else
             warn "⚠️  main.tf not found in terraform directory"
         fi
@@ -238,6 +245,34 @@ check_application_gateway_config() {
         cd - > /dev/null
     else
         warn "⚠️  Terraform directory not found"
+    fi
+    
+    # Check Gateway API resources
+    log "Checking Gateway API resources..."
+    
+    if kubectl get gateway -A >/dev/null 2>&1; then
+        log "✅ Gateway API resources are available"
+        
+        # Check if Gateway is configured
+        if kubectl get gateway application-gateway-for-containers -n system >/dev/null 2>&1; then
+            log "✅ Application Gateway for Containers Gateway is configured"
+        else
+            warn "⚠️  Application Gateway for Containers Gateway not found"
+        fi
+        
+        # Check HTTPRoute resources
+        if kubectl get httproute -A >/dev/null 2>&1; then
+            log "✅ HTTPRoute resources are available"
+            
+            local httproute_count=$(kubectl get httproute -A --no-headers | wc -l)
+            log "📊 Found $httproute_count HTTPRoute(s)"
+        else
+            warn "⚠️  HTTPRoute resources not found"
+        fi
+    else
+        warn "⚠️  Gateway API CRDs not installed"
+        info "💡 You may need to install Gateway API CRDs:"
+        info "kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml"
     fi
 }
 

@@ -5,7 +5,7 @@
 resource_group_name = "rg-aks-traefik-lab"
 location           = "Southeast Asia"
 cluster_name       = "aks-traefik-lab"
-kubernetes_version = "1.29.7"
+kubernetes_version = "1.32"
 
 # Availability zones configuration
 # Choose zones based on your region:
@@ -47,3 +47,7 @@ tags = {
   ManagedBy   = "terraform"
   CostCenter  = "engineering"
 }
+
+# AKS admin group object IDs (Azure AD group object IDs for cluster-admin access)
+# Example: aks_admin_group_object_ids = ["00000000-0000-0000-0000-000000000000"]
+aks_admin_group_object_ids = []

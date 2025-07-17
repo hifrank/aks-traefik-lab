@@ -11,7 +11,7 @@ metadata:
 spec:
   controller: traefik.io/ingress-controller
 ---
-# Traefik Dashboard IngressRoute
+# Traefik Dashboard IngressRoute (for internal access via Application Gateway for Containers)
 apiVersion: traefik.containo.us/v1alpha1
 kind: IngressRoute
 metadata:
@@ -23,7 +23,7 @@ metadata:
     app.kubernetes.io/component: dashboard
 spec:
   entryPoints:
-    - websecure
+    - web
   routes:
     - match: Host(`traefik.example.com`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))
       kind: Rule
@@ -40,8 +40,6 @@ spec:
       middlewares:
         - name: dashboard-redirect
         - name: dashboard-auth
-  tls:
-    - secretName: traefik-dashboard-tls
 ---
 # Basic Auth Middleware for Dashboard
 apiVersion: traefik.containo.us/v1alpha1

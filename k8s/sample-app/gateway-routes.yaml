@@ -1,0 +1,90 @@
+# Application Gateway for Containers routing configuration
+# This configures the external gateway to route traffic to Traefik
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: sample-app-gateway-route
+  namespace: sample-app
+  labels:
+    app: sample-app
+spec:
+  parentRefs:
+    - name: application-gateway-for-containers
+      namespace: system
+  hostnames:
+    - sample-app.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: traefik
+          namespace: traefik
+          port: 80
+          weight: 100
+---
+# Traefik Dashboard Gateway Route
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: traefik-dashboard-gateway-route
+  namespace: traefik
+  labels:
+    app: traefik
+spec:
+  parentRefs:
+    - name: application-gateway-for-containers
+      namespace: system
+  hostnames:
+    - traefik.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /dashboard
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: traefik-dashboard
+          namespace: traefik
+          port: 8080
+          weight: 100
+---
+# Sample Application IngressRoute for internal Traefik routing
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: sample-app-internal-route
+  namespace: sample-app
+  labels:
+    app: sample-app
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`sample-app.example.com`)
+      kind: Rule
+      services:
+        - name: sample-app-service
+          port: 80
+      middlewares:
+        - name: security-headers
+          namespace: traefik
+        - name: compress
+          namespace: traefik
+        - name: rate-limit
+          namespace: traefik
+    - match: Host(`sample-app.example.com`) && PathPrefix(`/api`)
+      kind: Rule
+      services:
+        - name: sample-app-service
+          port: 80
+      middlewares:
+        - name: cors
+          namespace: traefik
+        - name: rate-limit
+          namespace: traefik
+        - name: retry
+          namespace: traefik
