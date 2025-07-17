@@ -152,6 +152,30 @@ register_resource_providers() {
     log "Note: Some providers may still be registering in the background. This is normal."
 }
 
+validate_terraform_config() {
+    log "Validating Terraform configuration..."
+    
+    cd "${TERRAFORM_DIR}"
+    
+    # Check if Terraform can validate the configuration
+    if terraform validate; then
+        log "✅ Terraform configuration is valid"
+    else
+        error "❌ Terraform configuration validation failed. Please check the configuration files."
+    fi
+    
+    # Check if terraform.tfvars exists and is not empty
+    if [[ -f "terraform.tfvars" ]]; then
+        if [[ -s "terraform.tfvars" ]]; then
+            log "✅ terraform.tfvars file exists and is not empty"
+        else
+            warn "⚠️  terraform.tfvars file is empty. Using default values."
+        fi
+    else
+        log "📝 terraform.tfvars not found. Will create from example."
+    fi
+}
+
 deploy_infrastructure() {
     log "Deploying Azure infrastructure with Terraform..."
     
@@ -159,6 +183,9 @@ deploy_infrastructure() {
     
     # Initialize Terraform
     terraform init
+    
+    # Validate Terraform configuration
+    validate_terraform_config
     
     # Create terraform.tfvars if it doesn't exist
     if [[ ! -f "terraform.tfvars" ]]; then
@@ -180,16 +207,18 @@ deploy_infrastructure() {
             log "Terraform apply successful!"
             break
         else
+            local exit_code=$?
             retry_count=$((retry_count + 1))
+            
             if [[ $retry_count -lt $max_retries ]]; then
-                warn "Terraform apply failed, likely due to Azure resource provider conflicts. Retrying in 30 seconds..."
+                warn "Terraform apply failed (exit code: $exit_code). Retrying in 30 seconds..."
                 sleep 30
                 
                 # Re-run terraform plan before retry
                 log "Re-planning deployment..."
                 terraform plan -out=tfplan
             else
-                error "Terraform apply failed after $max_retries attempts. Please check the error above."
+                error "Terraform apply failed after $max_retries attempts. Exit code: $exit_code. Please check the error above."
             fi
         fi
     done
@@ -373,6 +402,9 @@ main() {
     
     # Deploy infrastructure
     deploy_infrastructure
+    
+    # Validate Terraform configuration
+    validate_terraform_config
     
     # Configure kubectl
     configure_kubectl

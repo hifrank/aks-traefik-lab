@@ -199,6 +199,48 @@ check_terraform_state() {
     fi
 }
 
+check_application_gateway_config() {
+    log "Checking Application Gateway configuration..."
+    
+    local terraform_dir="../terraform"
+    
+    if [[ -d "$terraform_dir" ]]; then
+        cd "$terraform_dir"
+        
+        # Check for common Application Gateway configuration issues
+        if [[ -f "main.tf" ]]; then
+            log "✅ main.tf found"
+            
+            # Check if request routing rule has priority
+            if grep -q "priority" main.tf; then
+                log "✅ Request routing rule priority is configured"
+            else
+                warn "⚠️  Request routing rule might be missing priority (required for API version 2021-08-01+)"
+            fi
+            
+            # Check SKU configuration
+            if grep -q "Standard_v2" main.tf; then
+                log "✅ Using Standard_v2 SKU (recommended)"
+            else
+                warn "⚠️  Consider using Standard_v2 SKU for better performance"
+            fi
+            
+            # Check if managed identity is configured
+            if grep -q "identity" main.tf; then
+                log "✅ Managed identity is configured"
+            else
+                warn "⚠️  Managed identity configuration not found"
+            fi
+        else
+            warn "⚠️  main.tf not found in terraform directory"
+        fi
+        
+        cd - > /dev/null
+    else
+        warn "⚠️  Terraform directory not found"
+    fi
+}
+
 show_common_solutions() {
     log "Common solutions for deployment issues..."
     
@@ -247,6 +289,7 @@ main() {
     check_azure_quotas
     check_permissions
     check_terraform_state
+    check_application_gateway_config
     show_common_solutions
     
     log "Troubleshooting completed!"
