@@ -1,0 +1,203 @@
+# Sample Application Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sample-app
+  labels:
+    name: sample-app
+---
+# Sample Application Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-app
+  namespace: sample-app
+  labels:
+    app: sample-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: sample-app
+  template:
+    metadata:
+      labels:
+        app: sample-app
+    spec:
+      containers:
+        - name: app
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nginx/conf.d
+            - name: html
+              mountPath: /usr/share/nginx/html
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: sample-app-config
+        - name: html
+          configMap:
+            name: sample-app-html
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+---
+# Sample Application Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample-app-service
+  namespace: sample-app
+  labels:
+    app: sample-app
+spec:
+  selector:
+    app: sample-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+  type: ClusterIP
+---
+# Sample Application ConfigMap for Nginx
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sample-app-config
+  namespace: sample-app
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name localhost;
+        
+        location / {
+            root /usr/share/nginx/html;
+            index index.html index.htm;
+            try_files \$uri \$uri/ =404;
+        }
+        
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+        
+        location /api {
+            add_header Content-Type application/json;
+            return 200 '{"message": "Hello from API", "timestamp": "\$time_iso8601", "hostname": "\$hostname"}';
+        }
+    }
+---
+# Sample Application HTML Content
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sample-app-html
+  namespace: sample-app
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Sample Application</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f5f5f5;
+            }
+            .container {
+                background-color: white;
+                padding: 30px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }
+            h1 {
+                color: #333;
+                text-align: center;
+            }
+            .info {
+                background-color: #e3f2fd;
+                padding: 15px;
+                border-radius: 5px;
+                margin: 20px 0;
+            }
+            .button {
+                display: inline-block;
+                padding: 10px 20px;
+                background-color: #007bff;
+                color: white;
+                text-decoration: none;
+                border-radius: 5px;
+                margin: 10px;
+            }
+            .button:hover {
+                background-color: #0056b3;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🚀 Sample Application</h1>
+            <div class="info">
+                <h3>Welcome to the AKS Traefik Lab!</h3>
+                <p>This is a sample application running on Azure Kubernetes Service (AKS) with Traefik as the Ingress Controller.</p>
+                <p><strong>Features:</strong></p>
+                <ul>
+                    <li>Deployed on AKS with Azure CNI</li>
+                    <li>Traefik v3 as Ingress Controller</li>
+                    <li>Azure Application Gateway for Containers (AGIC)</li>
+                    <li>Managed Identity for security</li>
+                    <li>Load balancing and auto-scaling</li>
+                </ul>
+            </div>
+            <div style="text-align: center;">
+                <a href="/api" class="button">Test API Endpoint</a>
+                <a href="/health" class="button">Health Check</a>
+            </div>
+            <div class="info">
+                <h3>Technical Details:</h3>
+                <p><strong>Hostname:</strong> <span id="hostname">Loading...</span></p>
+                <p><strong>Load Time:</strong> <span id="loadTime">Loading...</span></p>
+                <p><strong>User Agent:</strong> <span id="userAgent">Loading...</span></p>
+            </div>
+        </div>
+        
+        <script>
+            document.getElementById('hostname').textContent = window.location.hostname;
+            document.getElementById('loadTime').textContent = new Date().toLocaleString();
+            document.getElementById('userAgent').textContent = navigator.userAgent;
+        </script>
+    </body>
+    </html>

@@ -1,0 +1,101 @@
+# Traefik ConfigMap for static configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traefik-config
+  namespace: traefik
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: traefik
+data:
+  traefik.yaml: |
+    # Static configuration
+    global:
+      checkNewVersion: false
+      sendAnonymousUsage: false
+
+    # Entry points
+    entryPoints:
+      web:
+        address: ":8000"
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
+      websecure:
+        address: ":8443"
+        http:
+          tls:
+            options: default
+      traefik:
+        address: ":8080"
+
+    # Providers
+    providers:
+      kubernetes:
+        endpoints:
+          - "https://kubernetes.default.svc:443"
+      kubernetesIngress:
+        ingressClass: traefik
+        publishedService:
+          enabled: true
+      kubernetesCRD:
+        allowCrossNamespace: true
+        allowExternalNameServices: true
+
+    # Metrics
+    metrics:
+      prometheus:
+        addEntryPointsLabels: true
+        addServicesLabels: true
+        addRoutersLabels: true
+        manualRouting: true
+
+    # API and Dashboard
+    api:
+      dashboard: true
+      debug: true
+      insecure: false
+
+    # Logging
+    log:
+      level: INFO
+      filePath: "/var/log/traefik/traefik.log"
+      format: json
+
+    # Access logs
+    accessLog:
+      filePath: "/var/log/traefik/access.log"
+      format: json
+      filters:
+        statusCodes:
+          - "200"
+          - "300-302"
+          - "400-499"
+          - "500-599"
+
+    # Tracing (optional)
+    tracing:
+      jaeger:
+        samplingServerURL: http://jaeger-agent.monitoring.svc.cluster.local:5778/sampling
+        localAgentHostPort: jaeger-agent.monitoring.svc.cluster.local:6831
+
+    # Health check
+    ping:
+      entryPoint: traefik
+
+    # TLS configuration
+    tls:
+      options:
+        default:
+          sslStrategies:
+            - "tls.SniStrict"
+          minVersion: "VersionTLS12"
+          cipherSuites:
+            - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+            - "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
+            - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+            - "TLS_RSA_WITH_AES_256_GCM_SHA384"
+            - "TLS_RSA_WITH_AES_128_GCM_SHA256"

@@ -1,0 +1,289 @@
+# Default values for traefik-aks
+# This is a YAML-formatted file.
+
+# Global configuration
+global:
+  # -- Environment name (dev, staging, prod)
+  environment: "dev"
+  # -- Domain suffix for ingress hosts
+  domainSuffix: "example.com"
+
+# Traefik configuration
+traefik:
+  enabled: true
+  
+  # Image configuration
+  image:
+    registry: docker.io
+    repository: traefik
+    tag: "v3.0"
+    pullPolicy: IfNotPresent
+
+  # Deployment configuration
+  deployment:
+    enabled: true
+    replicas: 2
+    podAnnotations: {}
+    podLabels: {}
+    
+  # Resources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 50Mi
+    limits:
+      cpu: 300m
+      memory: 150Mi
+
+  # Service configuration
+  service:
+    enabled: true
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+    spec:
+      loadBalancerIP: ""
+      externalTrafficPolicy: Local
+
+  # Ports configuration
+  ports:
+    web:
+      port: 8000
+      expose: true
+      exposedPort: 80
+      protocol: TCP
+      redirectTo: websecure
+    websecure:
+      port: 8443
+      expose: true
+      exposedPort: 443
+      protocol: TCP
+      tls:
+        enabled: true
+        options: "default"
+    traefik:
+      port: 8080
+      expose: false
+      protocol: TCP
+
+  # IngressRoute configuration
+  ingressRoute:
+    dashboard:
+      enabled: true
+      annotations: {}
+      labels: {}
+      matchRule: Host(`traefik.{{ .Values.global.domainSuffix }}`)
+      entryPoints: ["websecure"]
+      middlewares:
+        - name: dashboard-auth
+        - name: security-headers
+      tls:
+        secretName: traefik-dashboard-tls
+
+  # Providers configuration
+  providers:
+    kubernetes:
+      enabled: true
+      allowCrossNamespace: true
+      allowExternalNameServices: true
+      ingressClass: traefik
+      publishedService:
+        enabled: true
+    kubernetesIngress:
+      enabled: true
+      allowExternalNameServices: true
+      ingressClass: traefik
+      publishedService:
+        enabled: true
+    kubernetesCRD:
+      enabled: true
+      allowCrossNamespace: true
+      allowExternalNameServices: true
+
+  # Logs configuration
+  logs:
+    general:
+      level: INFO
+      format: json
+    access:
+      enabled: true
+      format: json
+      filters:
+        statuscodes: "200,300-302,400-499,500-599"
+
+  # Metrics configuration
+  metrics:
+    prometheus:
+      enabled: true
+      addEntryPointsLabels: true
+      addServicesLabels: true
+      addRoutersLabels: true
+      service:
+        enabled: true
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
+          prometheus.io/path: "/metrics"
+
+  # TLS configuration
+  tls:
+    enabled: true
+    options:
+      default:
+        minVersion: VersionTLS12
+        cipherSuites:
+          - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+          - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+          - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+          - TLS_RSA_WITH_AES_256_GCM_SHA384
+          - TLS_RSA_WITH_AES_128_GCM_SHA256
+
+  # Dashboard configuration
+  dashboard:
+    enabled: true
+    domain: "traefik.{{ .Values.global.domainSuffix }}"
+    auth:
+      basic:
+        enabled: true
+        username: admin
+        password: password
+
+  # Additional configuration
+  additionalArguments:
+    - --entrypoints.web.http.redirections.entrypoint.to=websecure
+    - --entrypoints.web.http.redirections.entrypoint.scheme=https
+    - --entrypoints.web.http.redirections.entrypoint.permanent=true
+    - --ping=true
+    - --ping.entrypoint=traefik
+    - --api.dashboard=true
+    - --api.debug=true
+    - --global.checknewversion=false
+    - --global.sendanonymoususage=false
+
+  # Environment variables
+  env:
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: POD_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+
+  # Security context
+  securityContext:
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsGroup: 65532
+    runAsNonRoot: true
+    runAsUser: 65532
+    allowPrivilegeEscalation: false
+
+  # Node selection
+  nodeSelector:
+    kubernetes.io/os: linux
+
+  # Tolerations
+  tolerations:
+    - key: node.kubernetes.io/not-ready
+      operator: Exists
+      effect: NoExecute
+      tolerationSeconds: 300
+    - key: node.kubernetes.io/unreachable
+      operator: Exists
+      effect: NoExecute
+      tolerationSeconds: 300
+    - key: workload
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+
+  # Affinity
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - traefik
+            topologyKey: kubernetes.io/hostname
+
+# Middlewares configuration
+middlewares:
+  # Security headers middleware
+  securityHeaders:
+    enabled: true
+    headers:
+      browserXssFilter: true
+      contentTypeNosniff: true
+      forceSTSHeader: true
+      frameDeny: true
+      stsIncludeSubdomains: true
+      stsPreload: true
+      stsSeconds: 31536000
+      customRequestHeaders:
+        X-Forwarded-Proto: https
+      customResponseHeaders:
+        X-Robots-Tag: noindex,nofollow,nosnippet,noarchive
+
+  # CORS middleware
+  cors:
+    enabled: true
+    headers:
+      accessControlAllowMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+        - OPTIONS
+      accessControlAllowOriginList:
+        - "*"
+      accessControlAllowHeaders:
+        - "*"
+      accessControlExposeHeaders:
+        - "*"
+      accessControlAllowCredentials: true
+      accessControlMaxAge: 300
+
+  # Rate limiting middleware
+  rateLimit:
+    enabled: true
+    average: 100
+    burst: 200
+    period: 1m
+
+  # Retry middleware
+  retry:
+    enabled: true
+    attempts: 3
+    initialInterval: 100ms
+
+  # Circuit breaker middleware
+  circuitBreaker:
+    enabled: true
+    expression: "ResponseCodeRatio(500, 600, 0, 600) > 0.30"
+
+  # Compress middleware
+  compress:
+    enabled: true
+    excludedContentTypes:
+      - text/event-stream
+
+# IngressClass configuration
+ingressClass:
+  enabled: true
+  name: traefik
+  isDefaultClass: true
+
+# RBAC configuration
+rbac:
+  enabled: true
+  namespaced: false

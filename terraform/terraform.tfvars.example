@@ -1,0 +1,41 @@
+# Example terraform.tfvars file
+# Copy this to terraform.tfvars and modify values as needed
+
+# Basic configuration
+resource_group_name = "rg-aks-traefik-lab"
+location           = "East US"
+cluster_name       = "aks-traefik-lab"
+kubernetes_version = "1.28.5"
+
+# Default node pool configuration
+node_count     = 2
+vm_size        = "Standard_D2s_v3"
+min_node_count = 1
+max_node_count = 5
+
+# Workload node pool configuration
+workload_node_count     = 2
+workload_vm_size        = "Standard_D4s_v3"
+workload_min_node_count = 1
+workload_max_node_count = 10
+
+# Network configuration
+vnet_address_space           = ["10.0.0.0/16"]
+aks_subnet_address_prefix    = "10.0.1.0/24"
+agw_subnet_address_prefix    = "10.0.2.0/24"
+
+# Application Gateway configuration
+application_gateway_sku      = "Standard_v2"
+application_gateway_capacity = 2
+
+# Monitoring configuration
+log_analytics_retention_days = 30
+
+# Tags
+tags = {
+  Environment = "lab"
+  Project     = "aks-traefik-lab"
+  Owner       = "platform-team"
+  ManagedBy   = "terraform"
+  CostCenter  = "engineering"
+}
