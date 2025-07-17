@@ -193,6 +193,9 @@ deploy_infrastructure() {
         cp terraform.tfvars.example terraform.tfvars
     fi
     
+    # Update availability zones based on location
+    update_availability_zones
+    
     # Plan the deployment
     terraform plan -out=tfplan
     
@@ -338,6 +341,91 @@ cleanup() {
         log "Resources cleaned up successfully!"
     else
         log "Cleanup cancelled."
+    fi
+}
+
+get_availability_zones() {
+    local location="$1"
+    
+    case "$location" in
+        "eastus"|"East US"|"eastus2"|"East US 2")
+            echo '["1", "2", "3"]'
+            ;;
+        "southeastasia"|"Southeast Asia"|"eastasia"|"East Asia")
+            echo '["1", "3"]'
+            ;;
+        "westeurope"|"West Europe"|"northeurope"|"North Europe")
+            echo '["1", "2", "3"]'
+            ;;
+        "japaneast"|"Japan East"|"japanwest"|"Japan West")
+            echo '["1", "2", "3"]'
+            ;;
+        "australiaeast"|"Australia East"|"australiasoutheast"|"Australia Southeast")
+            echo '["1", "2", "3"]'
+            ;;
+        "canadacentral"|"Canada Central"|"canadaeast"|"Canada East")
+            echo '["1", "2", "3"]'
+            ;;
+        "uksouth"|"UK South"|"ukwest"|"UK West")
+            echo '["1", "2", "3"]'
+            ;;
+        "westus2"|"West US 2"|"westus"|"West US")
+            echo '["1", "2", "3"]'
+            ;;
+        "centralus"|"Central US"|"southcentralus"|"South Central US")
+            echo '["1", "2", "3"]'
+            ;;
+        "francecentral"|"France Central"|"francesouth"|"France South")
+            echo '["1", "2", "3"]'
+            ;;
+        "brazilsouth"|"Brazil South")
+            echo '["1", "2", "3"]'
+            ;;
+        "southafricanorth"|"South Africa North")
+            echo '["1", "2", "3"]'
+            ;;
+        "uaenorth"|"UAE North")
+            echo '["1", "2", "3"]'
+            ;;
+        "koreasouth"|"Korea South"|"koreacentral"|"Korea Central")
+            echo '["1", "2", "3"]'
+            ;;
+        "switzerlandnorth"|"Switzerland North"|"switzerlandwest"|"Switzerland West")
+            echo '["1", "2", "3"]'
+            ;;
+        "germanynorth"|"Germany North"|"germanywestcentral"|"Germany West Central")
+            echo '["1", "2", "3"]'
+            ;;
+        "norwayeast"|"Norway East"|"norwaywest"|"Norway West")
+            echo '["1", "2", "3"]'
+            ;;
+        *)
+            warn "Unknown location: $location. Using default zones [1, 3]"
+            echo '["1", "3"]'
+            ;;
+    esac
+}
+
+update_availability_zones() {
+    log "Updating availability zones for location: ${LOCATION}"
+    
+    local zones
+    zones=$(get_availability_zones "$LOCATION")
+    
+    log "Using availability zones: ${zones}"
+    
+    # Update terraform.tfvars with correct zones
+    if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
+        # Check if availability_zones is already in the file
+        if grep -q "availability_zones" "${TERRAFORM_DIR}/terraform.tfvars"; then
+            # Replace existing line
+            sed -i '' "s/availability_zones = .*/availability_zones = ${zones}/" "${TERRAFORM_DIR}/terraform.tfvars"
+        else
+            # Add new line
+            echo "availability_zones = ${zones}" >> "${TERRAFORM_DIR}/terraform.tfvars"
+        fi
+    else
+        warn "terraform.tfvars not found. Will be created from example."
     fi
 }
 

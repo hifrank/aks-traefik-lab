@@ -204,7 +204,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
     enable_auto_scaling = true
     min_count           = var.min_node_count
     max_count           = var.max_node_count
-    zones               = ["1", "2", "3"]
+    zones               = var.availability_zones
 
     upgrade_settings {
       max_surge = "10%"

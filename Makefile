@@ -10,10 +10,11 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Examples:"
-	@echo "  make deploy          # Deploy the complete lab"
-	@echo "  make validate        # Validate the deployment"
-	@echo "  make logs            # Show application logs"
-	@echo "  make destroy         # Clean up all resources"
+	@echo "  make deploy                    # Deploy the complete lab"
+	@echo "  make configure-zones LOCATION=southeastasia  # Configure availability zones"
+	@echo "  make validate                  # Validate the deployment"
+	@echo "  make logs                      # Show application logs"
+	@echo "  make destroy                   # Clean up all resources"
 
 # Prerequisites check
 check-deps: ## Check if all required tools are installed
@@ -88,6 +89,39 @@ dashboard: ## Port-forward to Traefik dashboard
 	@kubectl port-forward -n traefik svc/traefik-dashboard 8080:8080
 
 # Configuration management
+configure-zones: ## Configure availability zones for the specified location
+	@echo "Configuring availability zones for location: $(LOCATION)"
+	@case "$(LOCATION)" in \
+		"eastus"|"East US"|"eastus2"|"East US 2") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"southeastasia"|"Southeast Asia"|"eastasia"|"East Asia") echo "Using zones: [1, 3]" && zones='["1", "3"]' ;; \
+		"westeurope"|"West Europe"|"northeurope"|"North Europe") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"japaneast"|"Japan East"|"japanwest"|"Japan West") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"australiaeast"|"Australia East"|"australiasoutheast"|"Australia Southeast") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"canadacentral"|"Canada Central"|"canadaeast"|"Canada East") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"uksouth"|"UK South"|"ukwest"|"UK West") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"westus2"|"West US 2"|"westus"|"West US") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"centralus"|"Central US"|"southcentralus"|"South Central US") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"francecentral"|"France Central"|"francesouth"|"France South") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"brazilsouth"|"Brazil South") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"southafricanorth"|"South Africa North") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"uaenorth"|"UAE North") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"koreasouth"|"Korea South"|"koreacentral"|"Korea Central") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"switzerlandnorth"|"Switzerland North"|"switzerlandwest"|"Switzerland West") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"germanynorth"|"Germany North"|"germanywestcentral"|"Germany West Central") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		"norwayeast"|"Norway East"|"norwaywest"|"Norway West") echo "Using zones: [1, 2, 3]" && zones='["1", "2", "3"]' ;; \
+		*) echo "⚠️  Unknown location: $(LOCATION). Using default zones [1, 3]" && zones='["1", "3"]' ;; \
+	esac; \
+	if [ -f terraform/terraform.tfvars ]; then \
+		if grep -q "availability_zones" terraform/terraform.tfvars; then \
+			sed -i '' "s/availability_zones = .*/availability_zones = $$zones/" terraform/terraform.tfvars; \
+		else \
+			echo "availability_zones = $$zones" >> terraform/terraform.tfvars; \
+		fi; \
+		echo "✅ Updated terraform/terraform.tfvars with availability_zones = $$zones"; \
+	else \
+		echo "⚠️  terraform/terraform.tfvars not found. Run 'make dev-setup' first."; \
+	fi
+
 get-config: ## Get cluster configuration
 	@echo "=== Cluster Configuration ==="
 	@kubectl config current-context

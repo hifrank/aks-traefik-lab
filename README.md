@@ -248,118 +248,152 @@ Traefik metrics are available at:
 - **Metrics endpoint**: `http://traefik-service:8080/metrics`
 - **Prometheus scraping**: Enabled with annotations
 
-## 🔧 Troubleshooting
-
-### Resource Provider 409 Conflicts
-
-The error you encountered is a common Azure issue where multiple operations try to register the same resource providers simultaneously. Here are the solutions:
-
-#### Option 1: Use the improved deployment script (recommended)
-The deployment script now includes retry logic and better error handling:
-
-```bash
-# The script will automatically retry on conflicts
-make deploy
-```
-
-#### Option 2: Skip resource provider registration
-If you continue to see conflicts, you can skip the resource provider registration:
-
-```bash
-# Skip resource provider registration
-make deploy-skip-providers
-# or
-./scripts/deploy.sh --skip-providers
-```
-
-#### Option 3: Run troubleshooting diagnostics
-Use the troubleshooting script to diagnose issues:
-
-```bash
-make troubleshoot
-# or
-./scripts/troubleshoot.sh
-```
-
-### Common Solutions
-
-1. **Wait and retry**: Resource provider conflicts are often temporary
-2. **Check quotas**: Ensure you have sufficient Azure quotas
-3. **Verify permissions**: Confirm you have Contributor role
-4. **Try different region**: Some regions may have capacity issues
-
-### Manual Resource Provider Registration
-
-If needed, you can manually register the required providers:
-
-```bash
-az provider register --namespace Microsoft.ContainerService
-az provider register --namespace Microsoft.Compute
-az provider register --namespace Microsoft.Network
-az provider register --namespace Microsoft.Storage
-az provider register --namespace Microsoft.ManagedIdentity
-```
-
-## 🔐 Security Features
-
-- **Managed Identity**: AKS uses managed identity for Azure resource access
-- **RBAC**: Role-based access control for all components
-- **Network Security**: Azure CNI with network policies
-- **TLS**: Automatic HTTPS redirect and secure TLS configuration
-- **Security Headers**: Comprehensive security headers via middleware
-- **Rate Limiting**: Request rate limiting to prevent abuse
-
-## 🌟 Advanced Features
-
-### Custom Middlewares
-
-The lab includes several pre-configured middlewares:
-
-- **Security Headers**: XSS protection, HSTS, frame options
-- **CORS**: Cross-origin resource sharing configuration
-- **Rate Limiting**: Request throttling
-- **Retry**: Automatic retry on failures
-- **Circuit Breaker**: Failure detection and recovery
-- **Compression**: Response compression
-
-### IngressRoute Examples
-
-```yaml
-apiVersion: traefik.containo.us/v1alpha1
-kind: IngressRoute
-metadata:
-  name: my-app
-spec:
-  entryPoints:
-    - websecure
-  routes:
-    - match: Host(`myapp.example.com`)
-      kind: Rule
-      services:
-        - name: my-app-service
-          port: 80
-      middlewares:
-        - name: security-headers
-          namespace: traefik
-        - name: rate-limit
-          namespace: traefik
-  tls:
-    - secretName: my-app-tls
-```
-
 ## 🧹 Cleanup
 
 To remove all resources:
 
 ```bash
-./scripts/deploy.sh --cleanup
+make destroy
 ```
 
-Or manually:
+## 🔧 Troubleshooting
+
+### Common Issues and Solutions
+
+#### 1. Availability Zone Not Supported Error
+
+**Error**: `The zone(s) '2' for resource 'default' is not supported. The supported zones for location 'southeastasia' are '3,1'`
+
+**Solution**: Different Azure regions support different availability zones. Update your configuration:
 
 ```bash
+# For Southeast Asia region
+make configure-zones LOCATION=southeastasia
+
+# Or manually edit terraform/terraform.tfvars
+availability_zones = ["1", "3"]
+```
+
+**Common region-specific zones**:
+- **East US**: `["1", "2", "3"]`
+- **Southeast Asia**: `["1", "3"]` (zone 2 not supported)
+- **West Europe**: `["1", "2", "3"]`
+- **Japan East**: `["1", "2", "3"]`
+
+#### 2. Resource Provider Not Registered
+
+**Error**: `The subscription is not registered to use namespace 'Microsoft.ContainerService'`
+
+**Solution**: The deployment script automatically registers required providers, but you can also do it manually:
+
+```bash
+az provider register --namespace Microsoft.ContainerService
+az provider register --namespace Microsoft.Network
+az provider register --namespace Microsoft.Compute
+```
+
+#### 3. Application Gateway Creation Fails
+
+**Error**: `priority` field is required for request routing rules
+
+**Solution**: This has been fixed in the latest version. Make sure you're using the updated `main.tf` file.
+
+#### 4. Terraform State Lock
+
+**Error**: `Error locking state: Error acquiring the state lock`
+
+**Solution**: 
+```bash
 cd terraform
-terraform destroy
+terraform force-unlock <LOCK_ID>
+```
+
+#### 5. kubectl Connection Issues
+
+**Error**: `Unable to connect to the server`
+
+**Solution**: 
+```bash
+make get-creds
+# or
+az aks get-credentials --resource-group <rg-name> --name <cluster-name> --overwrite-existing
+```
+
+#### 6. Traefik Dashboard Not Accessible
+
+**Issue**: Cannot access Traefik dashboard
+
+**Solution**: 
+```bash
+# Check if pods are running
+kubectl get pods -n traefik
+
+# Port forward to dashboard
+make dashboard
+# or
+kubectl port-forward -n traefik svc/traefik-dashboard 8080:8080
+```
+
+#### 7. SSL Certificate Issues
+
+**Issue**: SSL/TLS certificate errors
+
+**Solution**: 
+```bash
+# Check certificate status
+kubectl get certificate -A
+
+# Check cert-manager logs (if using cert-manager)
+kubectl logs -n cert-manager -l app=cert-manager
+```
+
+#### 8. Load Balancer IP Not Assigned
+
+**Issue**: External IP shows as `<pending>`
+
+**Solution**: 
+```bash
+# Check service status
+kubectl get svc -n traefik
+
+# Check events
+kubectl get events -n traefik --sort-by='.lastTimestamp'
+
+# Verify Azure Load Balancer
+az network lb list --resource-group <node-resource-group>
+```
+
+### Diagnostic Commands
+
+Use these commands to troubleshoot issues:
+
+```bash
+# Run complete diagnostics
+make troubleshoot
+
+# Check cluster status
+make status
+
+# View logs
+make logs
+
+# Check resource usage
+make top
+
+# Test connectivity
+make test-connectivity
+```
+
+### Getting Help
+
+1. Check the [troubleshooting script](./scripts/troubleshoot.sh)
+2. Review Azure AKS documentation
+3. Check Traefik documentation
+4. Review Terraform Azure provider documentation
+
+For specific issues, run:
+```bash
+./scripts/troubleshoot.sh --verbose
 ```
 
 ## 📚 Additional Resources

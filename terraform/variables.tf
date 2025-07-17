@@ -45,7 +45,13 @@ variable "min_node_count" {
 variable "max_node_count" {
   description = "Maximum number of nodes in the default node pool"
   type        = number
-  default     = 5
+  default     = 10
+}
+
+variable "availability_zones" {
+  description = "List of availability zones for the region"
+  type        = list(string)
+  default     = ["1", "3"] # Default to zones 1 and 3 (compatible with most regions)
 }
 
 # Workload node pool variables
