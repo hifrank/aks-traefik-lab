@@ -216,12 +216,19 @@ check-k8s-version: ## Check available Kubernetes versions in the region
 
 update-k8s-version: ## Update Kubernetes version to latest supported
 	@echo "Updating Kubernetes version for location: $(LOCATION)"
-	@latest_version=$$(az aks get-versions --location "$(LOCATION)" --query "orchestrators[?isPreview==false].orchestratorVersion" -o tsv | sort -V | tail -n 1); \
+	@latest_version=$$(az aks get-versions --location "$(LOCATION)" --query "orchestrators[?isPreview==false].orchestratorVersion" -o tsv 2>/dev/null | sort -V | tail -n 1 | tr -d '\n' | xargs); \
 	if [ -n "$$latest_version" ]; then \
 		echo "Latest supported version: $$latest_version"; \
 		if [ -f terraform/terraform.tfvars ]; then \
 			if grep -q "kubernetes_version" terraform/terraform.tfvars; then \
-				sed -i '' "s|kubernetes_version = .*|kubernetes_version = \"$$latest_version\"|" terraform/terraform.tfvars; \
+				awk -v version="$$latest_version" '{ \
+					if ($$0 ~ /^kubernetes_version = /) { \
+						print "kubernetes_version = \"" version "\"" \
+					} else { \
+						print $$0 \
+					} \
+				}' terraform/terraform.tfvars > terraform/terraform.tfvars.tmp; \
+				mv terraform/terraform.tfvars.tmp terraform/terraform.tfvars; \
 			else \
 				echo "kubernetes_version = \"$$latest_version\"" >> terraform/terraform.tfvars; \
 			fi; \
